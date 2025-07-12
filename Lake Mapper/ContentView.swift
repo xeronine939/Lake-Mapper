@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var hasCenteredOnUser = false
     @State private var viewMode: ViewMode = .map
     @StateObject private var locationManager = LocationManager()
+    @State private var droppedCoordinate: CLLocationCoordinate2D?
 
     var body: some View {
         NavigationView {
@@ -25,25 +26,35 @@ struct ContentView: View {
                 if viewMode == .map {
                     VStack(spacing: 0) {
                         ZStack(alignment: .topTrailing) {
-                            MapView(waypoints: $waypoints, region: $region) { coord in
+                            MapView(waypoints: $waypoints,
+                                    region: $region,
+                                    droppedCoordinate: $droppedCoordinate) { coord in
                                 addWaypoint(at: coord)
                             }
-                            Button(action: { showCoords = true }) {
-                                Image(systemName: "plus")
-                                    .padding(8)
-                                    .background(Color.white.opacity(0.8))
-                                    .clipShape(Circle())
-                            }
-                            .padding()
-                            .alert("Current Location", isPresented: $showCoords) {
-                                Button("OK", role: .cancel) {}
-                            } message: {
-                                if let loc = locationManager.location {
-                                    Text(String(format: "%.6f, %.6f", loc.coordinate.latitude, loc.coordinate.longitude))
-                                } else {
-                                    Text("Location unavailable")
+                            VStack {
+                                Button(action: centerOnUser) {
+                                    Image(systemName: "location.fill")
+                                        .padding(8)
+                                        .background(Color.white.opacity(0.8))
+                                        .clipShape(Circle())
+                                }
+                                Button(action: { showCoords = true }) {
+                                    Image(systemName: "plus")
+                                        .padding(8)
+                                        .background(Color.white.opacity(0.8))
+                                        .clipShape(Circle())
+                                }
+                                .alert("Current Location", isPresented: $showCoords) {
+                                    Button("OK", role: .cancel) {}
+                                } message: {
+                                    if let loc = locationManager.location {
+                                        Text(String(format: "%.6f, %.6f", loc.coordinate.latitude, loc.coordinate.longitude))
+                                    } else {
+                                        Text("Location unavailable")
+                                    }
                                 }
                             }
+                            .padding()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -94,13 +105,22 @@ struct ContentView: View {
         let depthMeters = useFeet ? depth * 0.3048 : depth
         let waypoint = Waypoint(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon), depth: depthMeters)
         waypoints.append(waypoint)
+        droppedCoordinate = nil
         latText = ""
         lonText = ""
         depthText = ""
     }
 
     private func addWaypoint(at coord: CLLocationCoordinate2D) {
-        waypoints.append(Waypoint(coordinate: coord, depth: 0))
+        droppedCoordinate = coord
+        latText = String(format: "%.6f", coord.latitude)
+        lonText = String(format: "%.6f", coord.longitude)
+    }
+
+    private func centerOnUser() {
+        if let loc = locationManager.location {
+            region.center = loc.coordinate
+        }
     }
 }
 
