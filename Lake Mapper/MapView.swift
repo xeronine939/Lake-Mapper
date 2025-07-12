@@ -15,6 +15,12 @@ struct MapView: UIViewRepresentable {
 
         let press = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePress(_:)))
         mapView.addGestureRecognizer(press)
+
+        // Add heatmap overlay
+        let heatmap = DepthHeatmapOverlay(waypoints: waypoints)
+        mapView.addOverlay(heatmap)
+        context.coordinator.heatmapOverlay = heatmap
+
         return mapView
     }
 
@@ -23,6 +29,10 @@ struct MapView: UIViewRepresentable {
         context.coordinator.updateAnnotations(from: waypoints,
                                               dropped: droppedCoordinate,
                                               on: uiView)
+        if let overlay = context.coordinator.heatmapOverlay {
+            overlay.waypoints = waypoints
+            context.coordinator.heatmapRenderer?.setNeedsDisplay()
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -32,6 +42,8 @@ struct MapView: UIViewRepresentable {
     class Coordinator: NSObject, MKMapViewDelegate {
         var parent: MapView
         var annotations: [UUID: MKPointAnnotation] = [:]
+        var heatmapOverlay: DepthHeatmapOverlay?
+        var heatmapRenderer: DepthHeatmapRenderer?
 
         init(parent: MapView) {
             self.parent = parent
@@ -134,6 +146,11 @@ struct MapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let heatmap = overlay as? DepthHeatmapOverlay {
+                let renderer = DepthHeatmapRenderer(overlay: heatmap)
+                heatmapRenderer = renderer
+                return renderer
+            }
             if let circle = overlay as? MKCircle {
                 let renderer = MKCircleRenderer(circle: circle)
                 renderer.fillColor = UIColor.blue.withAlphaComponent(0.1)
