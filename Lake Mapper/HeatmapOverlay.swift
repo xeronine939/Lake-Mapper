@@ -32,7 +32,7 @@ class DepthHeatmapRenderer: MKOverlayRenderer {
                                           startCenter: point,
                                           startRadius: 0,
                                           endCenter: point,
-                                          endRadius: radius,
+                                          endRadius: CGFloat(radius),
                                           options: .drawsAfterEndLocation)
             }
         }
