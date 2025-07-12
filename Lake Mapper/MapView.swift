@@ -4,6 +4,7 @@ import MapKit
 struct MapView: UIViewRepresentable {
     @Binding var waypoints: [Waypoint]
     @Binding var region: MKCoordinateRegion
+    @Binding var droppedCoordinate: CLLocationCoordinate2D?
     var onLongPress: (CLLocationCoordinate2D) -> Void
 
     func makeUIView(context: Context) -> MKMapView {
@@ -19,7 +20,9 @@ struct MapView: UIViewRepresentable {
 
     func updateUIView(_ uiView: MKMapView, context: Context) {
         uiView.setRegion(region, animated: true)
-        context.coordinator.updateAnnotations(from: waypoints, on: uiView)
+        context.coordinator.updateAnnotations(from: waypoints,
+                                              dropped: droppedCoordinate,
+                                              on: uiView)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -34,7 +37,12 @@ struct MapView: UIViewRepresentable {
             self.parent = parent
         }
 
-        func updateAnnotations(from waypoints: [Waypoint], on mapView: MKMapView) {
+        var droppedAnnotation: MKPointAnnotation?
+        var overlays: [UUID: [MKCircle]] = [:]
+
+        func updateAnnotations(from waypoints: [Waypoint],
+                               dropped: CLLocationCoordinate2D?,
+                               on mapView: MKMapView) {
             let existingIDs = Set(annotations.keys)
             let currentIDs = Set(waypoints.map { $0.id })
             for id in existingIDs.subtracting(currentIDs) {
@@ -42,19 +50,57 @@ struct MapView: UIViewRepresentable {
                     mapView.removeAnnotation(anno)
                     annotations.removeValue(forKey: id)
                 }
+                if let circs = overlays[id] {
+                    mapView.removeOverlays(circs)
+                    overlays.removeValue(forKey: id)
+                }
             }
             for waypoint in waypoints {
                 if let anno = annotations[waypoint.id] {
                     anno.coordinate = waypoint.coordinate
                     anno.title = String(format: "%.1f m", waypoint.depth)
+                    if let circs = overlays[waypoint.id] {
+                        mapView.removeOverlays(circs)
+                    }
+                    overlays[waypoint.id] = makeCircles(for: waypoint)
+                    mapView.addOverlays(overlays[waypoint.id]!)
                 } else {
                     let anno = MKPointAnnotation()
                     anno.coordinate = waypoint.coordinate
                     anno.title = String(format: "%.1f m", waypoint.depth)
                     annotations[waypoint.id] = anno
                     mapView.addAnnotation(anno)
+                    let circs = makeCircles(for: waypoint)
+                    overlays[waypoint.id] = circs
+                    mapView.addOverlays(circs)
                 }
             }
+
+            // Handle dropped annotation
+            if let dropped = dropped {
+                if let anno = droppedAnnotation {
+                    anno.coordinate = dropped
+                } else {
+                    let anno = MKPointAnnotation()
+                    anno.coordinate = dropped
+                    droppedAnnotation = anno
+                    mapView.addAnnotation(anno)
+                }
+            } else if let anno = droppedAnnotation {
+                mapView.removeAnnotation(anno)
+                droppedAnnotation = nil
+            }
+        }
+
+        private func makeCircles(for waypoint: Waypoint) -> [MKCircle] {
+            // Create three concentric circles scaled by depth
+            var circles: [MKCircle] = []
+            let base = max(10.0, waypoint.depth * 3)
+            for i in 1...3 {
+                circles.append(MKCircle(center: waypoint.coordinate,
+                                        radius: CLLocationDistance(base * Double(i))))
+            }
+            return circles
         }
 
         @objc func handlePress(_ gesture: UILongPressGestureRecognizer) {
@@ -85,6 +131,21 @@ struct MapView: UIViewRepresentable {
                   let id = annotations.first(where: { $0.value === annotation })?.key,
                   let index = parent.waypoints.firstIndex(where: { $0.id == id }) else { return }
             parent.waypoints[index].coordinate = annotation.coordinate
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let circle = overlay as? MKCircle {
+                let renderer = MKCircleRenderer(circle: circle)
+                renderer.fillColor = UIColor.blue.withAlphaComponent(0.1)
+                renderer.strokeColor = UIColor.blue
+                renderer.lineWidth = 1
+                return renderer
+            }
+            return MKOverlayRenderer(overlay: overlay)
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            parent.region = mapView.region
         }
     }
 }
